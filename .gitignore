@@ -46,3 +46,5 @@ fcc-schema.json
 
 # Logs
 *.log
+# Local Java backup files
+*-backup.java

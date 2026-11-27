@@ -10,8 +10,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.text.Normalizer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -23,10 +23,19 @@ public class IbmSkillsBuildProvider implements LearningResourceProvider {
     private static final String API_URL =
             "https://skillsbuild.org/api/learning-catalog?audience=adult-learner&lang=en-us";
 
+    private static final long CACHE_DURATION_MS =
+            6 * 60 * 60 * 1000L;
+
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
+    private volatile List<IndexedResource> cachedResources =
+            List.of();
+
+    private volatile long lastFetchTime;
+
     public IbmSkillsBuildProvider() {
+
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
                 .build();
@@ -40,7 +49,9 @@ public class IbmSkillsBuildProvider implements LearningResourceProvider {
     }
 
     @Override
-    public List<LearningResource> search(String query, String languages) {
+    public List<LearningResource> search(
+            String query,
+            String languages) {
 
         if (query == null || query.isBlank()) {
             return List.of();
@@ -48,92 +59,67 @@ public class IbmSkillsBuildProvider implements LearningResourceProvider {
 
         try {
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(API_URL))
-                    .timeout(Duration.ofSeconds(30))
-                    .header("Accept", "application/json")
-                    .header("User-Agent", "Learnora/1.0")
-                    .GET()
-                    .build();
+            long startTime = System.nanoTime();
 
-            HttpResponse<String> response = httpClient.send(
-                    request,
-                    HttpResponse.BodyHandlers.ofString()
-            );
+            List<IndexedResource> resources =
+                    getCatalogResources();
 
-            if (response.statusCode() != 200) {
-                throw new IllegalStateException(
-                        "IBM catalog request failed: "
-                                + response.statusCode()
-                );
-            }
-
-            JsonNode root = objectMapper.readTree(response.body());
-
-            JsonNode items = root.path("items");
-
-            if (!items.isArray()) {
-                return List.of();
-            }
-
-            List<LearningResource> results = new ArrayList<>();
+            String normalizedQuery = normalize(query);
 
             List<String> selectedLanguages =
                     parseLanguages(languages);
 
-            for (JsonNode item : items) {
+            List<Candidate> candidates =
+                    new ArrayList<>();
 
-                String title = item.path("title").asText("");
-                String description =
-                        cleanHtml(item.path("description").asText(""));
+            for (IndexedResource item : resources) {
 
-                String url = item.path("url").asText("");
-
-                if (title.isBlank() || url.isBlank()) {
-                    continue;
-                }
-
-                // Apply language filtering.
-                if (!matchesLanguage(item, selectedLanguages)) {
+                if (!matchesLanguage(
+                        item,
+                        selectedLanguages)) {
                     continue;
                 }
 
                 int score = calculateScore(
-                        query,
-                        title,
-                        description,
-                        item
+                        item,
+                        normalizedQuery
                 );
 
-                // Ignore unrelated resources.
                 if (score <= 0) {
                     continue;
                 }
 
-                LearningResource resource = new LearningResource(
-                        title,
-                        description,
-                        url,
-                        "",
-                        "ibm",
-                        "unknown",
-                        "IBM SkillsBuild"
+                candidates.add(
+                        new Candidate(item.resource(), score)
                 );
-
-                results.add(resource);
             }
 
-            return results.stream()
-                    .sorted(Comparator.comparingInt(
-                            resource -> -calculateScore(
-                                    query,
-                                    resource.getTitle(),
-                                    resource.getDescription(),
-                                    null
+            List<LearningResource> results =
+                    candidates.stream()
+                            .sorted(
+                                    Comparator.comparingInt(
+                                            Candidate::score
+                                    ).reversed()
                             )
-                    ))
-                    .limit(20)
-                    .toList();
+                            .limit(20)
+                            .map(Candidate::resource)
+                            .toList();
+
+            long duration =
+                    (System.nanoTime() - startTime)
+                            / 1_000_000;
+
+            System.out.println(
+                    "IBM SkillsBuild search took "
+                            + duration + " ms"
+            );
+
+            System.out.println(
+                    "IBM SkillsBuild results found: "
+                            + results.size()
+            );
+
+            return results;
 
         } catch (Exception e) {
 
@@ -145,28 +131,176 @@ public class IbmSkillsBuildProvider implements LearningResourceProvider {
         }
     }
 
-    private int calculateScore(
-            String query,
-            String title,
-            String description,
-            JsonNode item
-    ) {
+    private List<IndexedResource> getCatalogResources()
+            throws Exception {
 
-        String normalizedQuery = normalize(query);
-        String normalizedTitle = normalize(title);
-        String normalizedDescription = normalize(description);
+        long currentTime = System.currentTimeMillis();
+
+        if (!cachedResources.isEmpty()
+                && currentTime - lastFetchTime
+                < CACHE_DURATION_MS) {
+
+            return cachedResources;
+        }
+
+        return refreshCatalog();
+    }
+
+    private synchronized List<IndexedResource> refreshCatalog()
+            throws Exception {
+
+        long currentTime = System.currentTimeMillis();
+
+        if (!cachedResources.isEmpty()
+                && currentTime - lastFetchTime
+                < CACHE_DURATION_MS) {
+
+            return cachedResources;
+        }
+
+        long fetchStart = System.nanoTime();
+
+        System.out.println(
+                "Downloading IBM SkillsBuild catalogue..."
+        );
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL))
+                .timeout(Duration.ofSeconds(30))
+                .header("Accept", "application/json")
+                .header("User-Agent", "Learnora/1.0")
+                .GET()
+                .build();
+
+        HttpResponse<String> response =
+                httpClient.send(
+                        request,
+                        HttpResponse.BodyHandlers.ofString()
+                );
+
+        if (response.statusCode() != 200) {
+
+            throw new IllegalStateException(
+                    "IBM catalog request failed: "
+                            + response.statusCode()
+            );
+        }
+
+        JsonNode root =
+                objectMapper.readTree(response.body());
+
+        JsonNode items = root.path("items");
+
+        if (!items.isArray()) {
+
+            throw new IllegalStateException(
+                    "IBM catalogue does not contain an items array."
+            );
+        }
+
+        List<IndexedResource> indexedResources =
+                new ArrayList<>();
+
+        for (JsonNode item : items) {
+
+            String title =
+                    item.path("title").asText("");
+
+            String description =
+                    cleanHtml(
+                            item.path("description").asText("")
+                    );
+
+            String url =
+                    item.path("url").asText("");
+
+            if (title.isBlank() || url.isBlank()) {
+                continue;
+            }
+
+            List<String> languages =
+                    normalizeArray(item.path("languages"));
+
+            List<String> skills =
+                    normalizeArray(
+                            firstAvailable(
+                                    item,
+                                    "skillstags",
+                                    "skillsTags"
+                            )
+                    );
+
+            List<String> topics =
+                    normalizeArray(item.path("topic"));
+
+            List<String> industries =
+                    normalizeArray(item.path("industry"));
+
+            LearningResource resource =
+                    new LearningResource(
+                            title,
+                            description,
+                            url,
+                            "",
+                            "ibm",
+                            "unknown",
+                            "IBM SkillsBuild"
+                    );
+
+            indexedResources.add(
+                    new IndexedResource(
+                            resource,
+                            normalize(title),
+                            normalize(description),
+                            languages,
+                            skills,
+                            topics,
+                            industries
+                    )
+            );
+        }
+
+        cachedResources =
+                List.copyOf(indexedResources);
+
+        lastFetchTime = System.currentTimeMillis();
+
+        long fetchDuration =
+                (System.nanoTime() - fetchStart)
+                        / 1_000_000;
+
+        System.out.println(
+                "IBM SkillsBuild catalogue loaded: "
+                        + cachedResources.size()
+                        + " resources"
+        );
+
+        System.out.println(
+                "IBM SkillsBuild catalogue processing took "
+                        + fetchDuration + " ms"
+        );
+
+        return cachedResources;
+    }
+
+    private int calculateScore(
+            IndexedResource item,
+            String normalizedQuery) {
 
         int score = 0;
 
-        if (normalizedTitle.contains(normalizedQuery)) {
+        if (item.normalizedTitle()
+                .contains(normalizedQuery)) {
             score += 10;
         }
 
-        if (normalizedDescription.contains(normalizedQuery)) {
+        if (item.normalizedDescription()
+                .contains(normalizedQuery)) {
             score += 3;
         }
 
-        String[] keywords = normalizedQuery.split("\\s+");
+        String[] keywords =
+                normalizedQuery.split("\\s+");
 
         for (String keyword : keywords) {
 
@@ -174,42 +308,55 @@ public class IbmSkillsBuildProvider implements LearningResourceProvider {
                 continue;
             }
 
-            if (normalizedTitle.contains(keyword)) {
+            if (item.normalizedTitle().contains(keyword)) {
                 score += 4;
             }
 
-            if (normalizedDescription.contains(keyword)) {
+            if (item.normalizedDescription().contains(keyword)) {
                 score += 1;
             }
 
-            if (item != null) {
+            if (containsKeyword(item.skills(), keyword)) {
+                score += 3;
+            }
 
-                if (containsValue(item.path("skillstags"), keyword)) {
-                    score += 3;
-                }
+            if (containsKeyword(item.topics(), keyword)) {
+                score += 3;
+            }
 
-                if (containsValue(item.path("topic"), keyword)) {
-                    score += 3;
-                }
-
-                if (containsValue(item.path("industry"), keyword)) {
-                    score += 2;
-                }
+            if (containsKeyword(item.industries(), keyword)) {
+                score += 2;
             }
         }
 
         return score;
     }
 
-    private boolean containsValue(JsonNode node, String keyword) {
+    private boolean containsKeyword(
+            List<String> values,
+            String keyword) {
 
-        if (!node.isArray()) {
-            return false;
+        for (String value : values) {
+
+            if (value.contains(keyword)) {
+                return true;
+            }
         }
 
-        for (JsonNode value : node) {
+        return false;
+    }
 
-            if (normalize(value.asText()).contains(keyword)) {
+    private boolean matchesLanguage(
+            IndexedResource item,
+            List<String> selectedLanguages) {
+
+        if (selectedLanguages.isEmpty()) {
+            return true;
+        }
+
+        for (String language : item.languages()) {
+
+            if (selectedLanguages.contains(language)) {
                 return true;
             }
         }
@@ -223,46 +370,73 @@ public class IbmSkillsBuildProvider implements LearningResourceProvider {
             return List.of();
         }
 
-        return List.of(languages.split(","))
-                .stream()
+        return java.util.Arrays.stream(
+                        languages.split(",")
+                )
                 .map(this::normalizeLanguage)
+                .distinct()
                 .toList();
     }
 
-    private boolean matchesLanguage(
-            JsonNode item,
-            List<String> selectedLanguages
-    ) {
+    private List<String> normalizeArray(JsonNode node) {
 
-        if (selectedLanguages.isEmpty()) {
-            return true;
-        }
+        List<String> values = new ArrayList<>();
 
-        JsonNode availableLanguages = item.path("languages");
+        if (node.isArray()) {
 
-        if (!availableLanguages.isArray()) {
-            return false;
-        }
+            for (JsonNode value : node) {
 
-        for (JsonNode language : availableLanguages) {
+                String normalized =
+                        normalize(value.asText());
 
-            String available = normalizeLanguage(language.asText());
+                if (!normalized.isBlank()) {
+                    values.add(normalized);
+                }
+            }
 
-            if (selectedLanguages.contains(available)) {
-                return true;
+        } else if (node.isValueNode()) {
+
+            String normalized =
+                    normalize(node.asText());
+
+            if (!normalized.isBlank()) {
+                values.add(normalized);
             }
         }
 
-        return false;
+        return List.copyOf(values);
+    }
+
+    private JsonNode firstAvailable(
+            JsonNode item,
+            String first,
+            String second) {
+
+        JsonNode firstNode = item.path(first);
+
+        if (!firstNode.isMissingNode()
+                && !firstNode.isNull()) {
+            return firstNode;
+        }
+
+        return item.path(second);
     }
 
     private String normalizeLanguage(String language) {
 
-        String normalized = language.trim().toLowerCase(Locale.ROOT);
+        String normalized =
+                language.trim().toLowerCase(Locale.ROOT);
 
-        if (normalized.startsWith("en-")) {
-            return "en";
-        }
+        if (normalized.startsWith("en")) return "en";
+        if (normalized.startsWith("ta")) return "ta";
+        if (normalized.startsWith("hi")) return "hi";
+        if (normalized.startsWith("te")) return "te";
+        if (normalized.startsWith("ml")) return "ml";
+        if (normalized.startsWith("kn")) return "kn";
+        if (normalized.startsWith("fr")) return "fr";
+        if (normalized.startsWith("de")) return "de";
+        if (normalized.startsWith("es")) return "es";
+        if (normalized.startsWith("ja")) return "ja";
 
         return normalized;
     }
@@ -270,13 +444,13 @@ public class IbmSkillsBuildProvider implements LearningResourceProvider {
     private String normalize(String text) {
 
         return Normalizer.normalize(
-                text == null ? "" : text,
-                Normalizer.Form.NFD
-        )
-        .replaceAll("\\p{M}", "")
-        .toLowerCase(Locale.ROOT)
-        .replaceAll("[^\\p{L}\\p{N}]+", " ")
-        .trim();
+                        text == null ? "" : text,
+                        Normalizer.Form.NFD
+                )
+                .replaceAll("\\p{M}", "")
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}]+", " ")
+                .trim();
     }
 
     private String cleanHtml(String html) {
@@ -293,5 +467,22 @@ public class IbmSkillsBuildProvider implements LearningResourceProvider {
                 .replace("&#39;", "'")
                 .replaceAll("\\s+", " ")
                 .trim();
+    }
+
+    private record IndexedResource(
+            LearningResource resource,
+            String normalizedTitle,
+            String normalizedDescription,
+            List<String> languages,
+            List<String> skills,
+            List<String> topics,
+            List<String> industries
+    ) {
+    }
+
+    private record Candidate(
+            LearningResource resource,
+            int score
+    ) {
     }
 }
