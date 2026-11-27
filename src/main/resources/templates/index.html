@@ -1,0 +1,990 @@
+
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Learnora - Discover. Learn. Grow.</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+          rel="stylesheet">
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+          rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #2563eb;
+            --dark: #14213d;
+            --muted: #64748b;
+            --light-bg: #f5f8ff;
+            --border: #e8edf5;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--dark);
+            background: #fff;
+        }
+
+        .navbar {
+            padding: 18px 0;
+            border-bottom: 1px solid #edf0f5;
+            background: white;
+        }
+
+        .brand {
+            font-size: 26px;
+            font-weight: 800;
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .nav-link {
+            color: #475569;
+            font-weight: 500;
+            margin: 0 10px;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, #eff6ff, #fff);
+            padding: 90px 15px 75px;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: clamp(36px, 5vw, 58px);
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        .hero h1 span {
+            color: var(--primary);
+        }
+
+        .hero p {
+            color: var(--muted);
+            font-size: 17px;
+            max-width: 680px;
+            margin: 20px auto 30px;
+        }
+
+        .search-box {
+            max-width: 850px;
+            margin: auto;
+            padding: 12px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 12px 40px rgba(37,99,235,.10);
+        }
+
+        .search-box input {
+            border: none;
+            box-shadow: none !important;
+            padding: 14px;
+            font-size: 15px;
+        }
+
+        .search-btn {
+            background: var(--primary);
+            color: white;
+            border-radius: 10px;
+            padding: 13px 25px;
+            font-weight: 600;
+        }
+
+        .search-btn:hover {
+            background: #1d4ed8;
+            color: white;
+        }
+
+        .filters {
+            margin-top: 22px;
+        }
+
+        .filters select {
+            min-width: 160px;
+            padding: 11px 15px;
+            border: 1px solid #dbe3ef;
+            border-radius: 9px;
+        }
+
+        .language-filter { min-width: 220px; position: relative; }
+        .language-filter .dropdown-toggle {
+            width: 100%; min-width: 220px; padding: 11px 15px;
+            text-align: left; color: #334155; background: #fff;
+            border: 1px solid #dbe3ef; border-radius: 9px;
+        }
+        .language-filter .dropdown-toggle::after { float: right; margin-top: 8px; }
+        .language-menu {
+            width: 100%; max-height: 280px; overflow-y: auto;
+            padding: 12px 14px; border: 1px solid #e2e8f0;
+            border-radius: 12px; box-shadow: 0 12px 28px rgba(15, 23, 42, .12);
+        }
+        .language-menu .form-check { padding: 7px 8px 7px 2rem; border-radius: 7px; }
+        .language-menu .form-check:hover { background: #eff6ff; }
+        .language-menu .form-check-input, .language-menu .form-check-label { cursor: pointer; }
+        .language-menu .form-check-label { width: 100%; color: #334155; font-size: 14px; }
+        .language-menu-actions {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 4px 10px; margin-bottom: 5px; border-bottom: 1px solid #edf0f5;
+        }
+
+        .section {
+            padding: 65px 0;
+        }
+
+        .section-title {
+            font-size: 30px;
+            font-weight: 800;
+        }
+
+        .quick-search {
+            display: inline-block;
+            margin: 5px;
+            padding: 8px 15px;
+            border: 1px solid #dbe3ef;
+            border-radius: 30px;
+            background: white;
+            color: #475569;
+            cursor: pointer;
+            font-size: 13px;
+            transition: .2s;
+        }
+
+        .quick-search:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: #eff6ff;
+        }
+
+        .resource-card {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 15px;
+            padding: 22px;
+            height: 100%;
+            transition: .25s;
+        }
+
+        .resource-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 30px rgba(0,0,0,.06);
+        }
+
+        .resource-type {
+            display: inline-block;
+            padding: 6px 11px;
+            background: #eff6ff;
+            color: var(--primary);
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .resource-card h5 {
+            font-size: 17px;
+            font-weight: 700;
+            margin-top: 17px;
+        }
+
+        .resource-card p {
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .resource-link {
+            color: var(--primary);
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .resource-link:hover {
+            text-decoration: underline;
+        }
+
+        .resource-thumbnail {
+            width: 100%;
+            height: 155px;
+            object-fit: cover;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        .result-meta {
+            color: var(--muted);
+            font-size: 12px;
+            margin-bottom: 14px;
+        }
+
+        .status-area {
+            text-align: center;
+            padding: 55px 15px;
+            color: var(--muted);
+        }
+
+        .spinner-border {
+            color: var(--primary);
+        }
+
+        .cta {
+            padding: 55px 20px;
+            background: #eff6ff;
+            border-radius: 20px;
+            text-align: center;
+        }
+
+        footer {
+            background: var(--dark);
+            color: #cbd5e1;
+            padding: 35px 0;
+        }
+
+        @media(max-width: 576px) {
+            .hero {
+                padding: 65px 15px;
+            }
+
+            .search-btn {
+                width: 100%;
+            }
+
+            .section-title {
+                font-size: 25px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar navbar-expand-lg sticky-top">
+    <div class="container">
+
+        <a class="brand" href="/">Learnora.</a>
+
+        <button class="navbar-toggler" type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#navbarMenu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarMenu">
+            <div class="navbar-nav ms-auto align-items-lg-center">
+                <a class="nav-link" href="#home">Home</a>
+                <a class="nav-link" href="#explore">Explore</a>
+                <a class="nav-link" href="#resources">Resources</a>
+                <a class="btn btn-primary px-4 ms-lg-3"
+                   href="#explore">Get Started</a>
+            </div>
+        </div>
+
+    </div>
+</nav>
+
+<!-- HERO SECTION -->
+<section class="hero" id="home">
+
+    <div class="container">
+
+        <span class="badge text-bg-primary rounded-pill px-3 py-2">
+            YOUR LEARNING JOURNEY STARTS HERE
+        </span>
+
+        <h1 class="mt-4">
+            Discover. Learn.<br>
+            <span>Grow with Learnora.</span>
+        </h1>
+
+        <p>
+            One platform. Endless learning possibilities.
+            Discover courses, tutorials, videos and learning
+            resources for any subject across the internet.
+        </p>
+
+        <!-- SEARCH BOX -->
+        <div class="search-box" id="explore">
+
+            <div class="row g-2">
+
+                <div class="col-md-9">
+                    <input type="text"
+                           id="searchInput"
+                           class="form-control"
+                           placeholder="Search anything: IoT, VLSI, Civil, AI, Java..."
+                           aria-label="Search learning resources">
+                </div>
+
+                <div class="col-md-3">
+                    <button class="btn search-btn w-100"
+                            id="searchButton"
+                            onclick="searchResources()">
+                        Search Resources →
+                    </button>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- FILTERS -->
+        <div class="filters d-flex justify-content-center
+                    gap-3 flex-wrap">
+           <select id="platformFilter" class="form-select"
+        aria-label="Filter by platform">
+
+    <option value="all">All Platforms</option>
+    <option value="youtube">YouTube</option>
+    <option value="nptel">NPTEL</option>
+    <option value="ibm skillsbuild">IBM SkillsBuild</option>
+    <option value="microsoft learn">Microsoft Learn</option>
+    <option value="freecodecamp">freeCodeCamp</option>
+    <option value="kaggle">Kaggle Learn</option>
+    <option value="coursera">Coursera</option>
+    <option value="udemy">Udemy</option>
+    <option value="google skills">Google Skills</option>
+
+</select>
+
+            <div class="dropdown language-filter">
+                <button class="btn dropdown-toggle" type="button"
+                        id="languageDropdown" data-bs-toggle="dropdown"
+                        aria-expanded="false">
+                    All Languages
+                </button>
+                <div class="dropdown-menu language-menu" aria-labelledby="languageDropdown">
+                    <div class="language-menu-actions">
+                        <span class="small fw-semibold text-secondary">Choose languages</span>
+                        <button type="button" class="btn btn-sm btn-link text-decoration-none p-0"
+                                id="clearLanguages">Clear all</button>
+                    </div>
+                    <div id="languageOptions">
+                        <div class="form-check">
+                            <input class="form-check-input language-option" type="checkbox" value="en" id="lang-en">
+                            <label class="form-check-label" for="lang-en">English</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input language-option" type="checkbox" value="ta" id="lang-ta">
+                            <label class="form-check-label" for="lang-ta">Tamil</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input language-option" type="checkbox" value="hi" id="lang-hi">
+                            <label class="form-check-label" for="lang-hi">Hindi</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input language-option" type="checkbox" value="te" id="lang-te">
+                            <label class="form-check-label" for="lang-te">Telugu</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input language-option" type="checkbox" value="ml" id="lang-ml">
+                            <label class="form-check-label" for="lang-ml">Malayalam</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input language-option" type="checkbox" value="kn" id="lang-kn">
+                            <label class="form-check-label" for="lang-kn">Kannada</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input language-option" type="checkbox" value="fr" id="lang-fr">
+                            <label class="form-check-label" for="lang-fr">French</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input language-option" type="checkbox" value="de" id="lang-de">
+                            <label class="form-check-label" for="lang-de">German</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input language-option" type="checkbox" value="es" id="lang-es">
+                            <label class="form-check-label" for="lang-es">Spanish</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input language-option" type="checkbox" value="ja" id="lang-ja">
+                            <label class="form-check-label" for="lang-ja">Japanese</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- QUICK SEARCHES -->
+        <div class="mt-4">
+            <small class="text-secondary">Try searching:</small>
+            <div class="mt-2">
+                <button class="quick-search"
+                        onclick="selectTopic('Internet of Things')">
+                    Internet of Things
+                </button>
+
+                <button class="quick-search"
+                        onclick="selectTopic('VLSI Design')">
+                    VLSI Design
+                </button>
+
+                <button class="quick-search"
+                        onclick="selectTopic('Civil Engineering')">
+                    Civil Engineering
+                </button>
+
+                <button class="quick-search"
+                        onclick="selectTopic('Machine Learning')">
+                    Machine Learning
+                </button>
+
+                <button class="quick-search"
+                        onclick="selectTopic('Cybersecurity')">
+                    Cybersecurity
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+</section>
+
+<!-- RESOURCES SECTION -->
+<section class="section bg-light" id="resources">
+
+    <div class="container">
+
+        <div class="d-flex flex-wrap justify-content-between
+                    align-items-center mb-4">
+
+            <div>
+                <h2 class="section-title">Explore Learning Resources</h2>
+                <p class="text-secondary mb-0" id="resultDescription">
+                    Search for any topic to discover relevant resources.
+                </p>
+            </div>
+
+            <span class="badge text-bg-primary mt-3 mt-md-0"
+                  id="resultCount">
+                0 Resources
+            </span>
+
+        </div>
+
+        <!-- LOADING -->
+        <div id="loadingState" class="status-area d-none">
+
+            <div class="spinner-border mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+
+            <h5>Discovering learning resources...</h5>
+
+            <p>Please wait while we search for relevant resources.</p>
+
+        </div>
+
+        <!-- INITIAL STATE -->
+        <div id="initialState" class="status-area">
+
+            <div style="font-size:45px;">🔎</div>
+
+            <h5 class="mt-3">What would you like to learn today?</h5>
+
+            <p>
+                Enter any subject, technology, engineering field
+                or skill to discover learning resources.
+            </p>
+
+        </div>
+
+        <!-- RESULTS -->
+        <div class="row g-4" id="resourceContainer">
+        </div>
+
+        <!-- NO RESULTS -->
+        <div id="noResults" class="status-area d-none">
+
+            <div style="font-size:45px;">📚</div>
+
+            <h5 class="mt-3">No matching resources found.</h5>
+
+            <p>
+                Try another topic or change your filters.
+            </p>
+
+        </div>
+
+        <!-- ERROR -->
+        <div id="errorState" class="status-area d-none">
+
+            <div style="font-size:45px;">⚠️</div>
+
+            <h5 class="mt-3">Unable to discover resources.</h5>
+
+            <p id="errorMessage">
+                Something went wrong. Please try again.
+            </p>
+
+            <button class="btn btn-outline-primary mt-2"
+                    onclick="searchResources()">
+                Try Again
+            </button>
+
+        </div>
+
+    </div>
+
+</section>
+
+<!-- CTA -->
+<section class="section">
+
+    <div class="container">
+
+        <div class="cta">
+
+            <h2 class="fw-bold">
+                Your next skill starts today.
+            </h2>
+
+            <p class="text-secondary mt-3">
+                Explore learning opportunities and take your
+                knowledge to the next level.
+            </p>
+
+            <a href="#explore" class="btn btn-primary mt-3 px-4 py-2">
+                Explore Learnora →
+            </a>
+
+        </div>
+
+    </div>
+
+</section>
+
+<!-- FOOTER -->
+<footer>
+
+    <div class="container text-center">
+
+        <h4 class="fw-bold text-white">Learnora.</h4>
+
+        <p class="small">Discover. Learn. Grow.</p>
+
+        <p class="small mb-0">
+            © 2026 Learnora. All rights reserved.
+        </p>
+
+    </div>
+
+</footer>
+
+<!-- JAVASCRIPT -->
+<script>
+
+    const API_URL = "/api/resources/search";
+
+    const searchInput = document.getElementById("searchInput");
+    const platformFilter = document.getElementById("platformFilter");
+    const languageDropdown = document.getElementById("languageDropdown");
+    const languageOptions = document.querySelectorAll(".language-option");
+
+    let currentQuery = "";
+    let searchController = null;
+
+    // SEARCH RESOURCES
+   // SEARCH RESOURCES
+async function searchResources(isCourseraRetry = false) {
+
+    const query = searchInput.value.trim();
+
+    if (!query) {
+        searchInput.focus();
+        searchInput.placeholder = "Please enter a topic to search...";
+        return;
+    }
+
+    currentQuery = query;
+
+    if (searchController) {
+        searchController.abort();
+    }
+
+    searchController = new AbortController();
+
+    const requestId = ++searchRequestId;
+
+    showState("loading");
+
+    document.getElementById("resultDescription").textContent =
+        `Searching for learning resources related to "${query}"...`;
+
+    const params = new URLSearchParams({
+        query: query,
+        platform: platformFilter.value,
+        languages: getSelectedLanguages().join(",")
+    });
+
+    try {
+
+        const response = await fetch(`${API_URL}?${params.toString()}`, {
+            method: "GET",
+            headers: {
+                "Accept": "application/json"
+            },
+            signal: searchController.signal
+        });
+
+        if (!response.ok) {
+            throw new Error(`Search failed (${response.status}).`);
+        }
+
+        const data = await response.json();
+
+        if (requestId !== searchRequestId) return;
+
+        const resources = Array.isArray(data)
+            ? data
+            : (data.resources || []);
+
+        // Wait for Coursera if it is the only selected platform
+        if (
+            resources.length === 0 &&
+            isCourseraSelected() &&
+            !isCourseraRetry
+        ) {
+
+            document.getElementById("resultDescription").textContent =
+                "Coursera's course catalogue is loading. Please wait...";
+
+            await waitForCourseraAndRefresh(requestId);
+
+            return;
+        }
+
+        renderResources(resources);
+
+    } catch (error) {
+
+        if (error.name === "AbortError") {
+            return;
+        }
+
+        console.error("Learnora search error:", error);
+
+        document.getElementById("errorMessage").textContent =
+            error.message || "Please check your connection and try again.";
+
+        showState("error");
+    }
+}
+// TRACK SEARCH REQUESTS
+let searchRequestId = 0;
+
+
+// CHECK WHETHER COURSERA IS SELECTED
+function isCourseraSelected() {
+
+    const selectedOption =
+        platformFilter.options[platformFilter.selectedIndex];
+
+    const selectedPlatform = (
+        platformFilter.value + " " +
+        (selectedOption?.textContent || "")
+    ).toLowerCase();
+
+    return selectedPlatform.includes("coursera");
+}
+
+
+// WAIT FOR COURSERA CATALOGUE
+async function waitForCourseraAndRefresh(requestId) {
+
+    const maximumAttempts = 120;
+    const pollingInterval = 2500;
+
+    for (let attempt = 0; attempt < maximumAttempts; attempt++) {
+
+        if (requestId !== searchRequestId) {
+            return;
+        }
+
+        await new Promise(resolve =>
+            setTimeout(resolve, pollingInterval)
+        );
+
+        if (requestId !== searchRequestId) {
+            return;
+        }
+
+        try {
+
+            const response = await fetch(
+                "/api/resources/coursera-status"
+            );
+
+            if (!response.ok) {
+                throw new Error("Unable to check Coursera status.");
+            }
+
+            const statusData = await response.json();
+
+            console.log("Coursera catalogue:", statusData);
+
+            if (statusData.status === "READY") {
+
+                document.getElementById("resultDescription").textContent =
+                    `Coursera catalogue loaded (${statusData.size} courses). Updating results...`;
+
+                await searchResources(true);
+
+                return;
+            }
+
+        } catch (error) {
+
+            console.error("Coursera status check failed:", error);
+
+        }
+    }
+
+    if (requestId === searchRequestId) {
+
+        document.getElementById("errorMessage").textContent =
+            "Coursera is taking longer than expected to load. Please try searching again shortly.";
+
+        showState("error");
+    }
+}
+
+    // DISPLAY SEARCH RESULTS
+    function renderResources(resources) {
+
+        const container = document.getElementById("resourceContainer");
+
+        container.replaceChildren();
+
+        if (!Array.isArray(resources) || resources.length === 0) {
+
+            document.getElementById("resultCount").textContent =
+                "0 Resources";
+
+            document.getElementById("resultDescription").textContent =
+                `No resources found for "${currentQuery}".`;
+
+            showState("empty");
+            return;
+        }
+
+        resources.forEach(resource => {
+
+            const title = resource.title || "Learning Resource";
+            const description = resource.description ||
+                "Explore this learning resource.";
+
+            const url = safeUrl(resource.url);
+
+            if (!url) {
+                return;
+            }
+
+            const platform = normalizePlatform(resource.platform);
+            const price = normalizePrice(resource.price);
+
+            const column = document.createElement("div");
+
+            column.className = "col-md-6 col-lg-4";
+
+            const card = document.createElement("div");
+            card.className = "resource-card";
+
+            if (resource.thumbnail && safeUrl(resource.thumbnail)) {
+
+                const image = document.createElement("img");
+                image.className = "resource-thumbnail";
+                image.src = safeUrl(resource.thumbnail);
+                image.alt = title;
+                image.loading = "lazy";
+
+                card.appendChild(image);
+            }
+
+            const badge = document.createElement("span");
+            badge.className = "resource-type";
+            badge.textContent = `${price} · ${platform}`;
+
+            const heading = document.createElement("h5");
+            heading.textContent = title;
+
+            const paragraph = document.createElement("p");
+            paragraph.textContent = description;
+
+            const metadata = document.createElement("div");
+            metadata.className = "result-meta";
+const provider = resource.provider || platform;
+
+const isExternalSearch = provider
+    .toLowerCase()
+    .includes("external search");
+
+metadata.textContent = isExternalSearch
+    ? `External Search Link · ${platform}`
+    : `Learning Resource · ${provider}`;
+
+            const link = document.createElement("a");
+            link.className = "resource-link";
+            link.href = url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.textContent = "Explore Resource →";
+
+            card.append(
+                badge,
+                heading,
+                paragraph,
+                metadata,
+                link
+            );
+
+            column.appendChild(card);
+            container.appendChild(column);
+        });
+
+        const displayedCount = container.children.length;
+
+        document.getElementById("resultCount").textContent =
+            `${displayedCount} Resources`;
+
+        document.getElementById("resultDescription").textContent =
+            `Learning resources discovered for "${currentQuery}".`;
+
+        showState(displayedCount > 0 ? "results" : "empty");
+    }
+
+    // VALIDATE RESOURCE URL
+    function safeUrl(value) {
+
+        if (!value) return null;
+
+        try {
+
+            const parsed = new URL(value);
+
+            if (parsed.protocol === "https:" ||
+                parsed.protocol === "http:") {
+                return parsed.href;
+            }
+
+        } catch (error) {
+            return null;
+        }
+
+        return null;
+    }
+
+    // NORMALIZE PLATFORM LABEL
+    function normalizePlatform(value) {
+
+        const platform = String(value || "website").toLowerCase();
+
+        const allowed = ["youtube", "course", "website"];
+
+        return allowed.includes(platform) ? platform : "website";
+    }
+
+    // NORMALIZE PRICE LABEL
+    function normalizePrice(value) {
+
+        const price = String(value || "unknown").toLowerCase();
+
+        const allowed = ["free", "paid", "freemium"];
+
+        return allowed.includes(price) ? price : "price unknown";
+    }
+
+    // CONTROL PAGE STATES
+    function showState(state) {
+
+        document.getElementById("loadingState")
+            .classList.toggle("d-none", state !== "loading");
+
+        document.getElementById("initialState")
+            .classList.toggle("d-none", state !== "initial");
+
+        document.getElementById("noResults")
+            .classList.toggle("d-none", state !== "empty");
+
+        document.getElementById("errorState")
+            .classList.toggle("d-none", state !== "error");
+
+        document.getElementById("resourceContainer")
+            .classList.toggle("d-none", state !== "results");
+    }
+
+    // QUICK SEARCH
+    function selectTopic(topic) {
+
+        searchInput.value = topic;
+
+        searchResources();
+    }
+
+    // ENTER KEY SEARCH
+    searchInput.addEventListener("keydown", function(event) {
+
+        if (event.key === "Enter") {
+            searchResources();
+        }
+
+    });
+
+    // GET SELECTED LANGUAGES
+    function getSelectedLanguages() {
+        return Array.from(languageOptions)
+            .filter(option => option.checked)
+            .map(option => option.value);
+    }
+
+    // UPDATE LANGUAGE FILTER LABEL
+    function updateLanguageLabel() {
+        const selected = Array.from(languageOptions)
+            .filter(option => option.checked)
+            .map(option => option.nextElementSibling.textContent.trim());
+
+        if (selected.length === 0) {
+            languageDropdown.textContent = "All Languages";
+        } else if (selected.length <= 2) {
+            languageDropdown.textContent = selected.join(", ");
+        } else {
+            languageDropdown.textContent = `${selected.length} Languages Selected`;
+        }
+    }
+
+    // LANGUAGE FILTER EVENTS
+    languageOptions.forEach(option => {
+        option.addEventListener("change", function() {
+            updateLanguageLabel();
+            if (currentQuery) searchResources();
+        });
+    });
+
+    document.getElementById("clearLanguages").addEventListener("click", function(event) {
+        event.preventDefault();
+        languageOptions.forEach(option => option.checked = false);
+        updateLanguageLabel();
+        if (currentQuery) searchResources();
+    });
+    platformFilter.addEventListener("change", function() {
+         if (currentQuery) {
+            searchResources();
+        }
+
+    });
+
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js">
+</script>
+
+</body>
+</html>
