@@ -2,6 +2,7 @@ package com.learnora.learnora.service.providers;
 
 import com.learnora.learnora.model.LearningResource;
 import org.springframework.stereotype.Component;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -30,10 +31,13 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
-    private JsonNode cachedCatalog;
-    private long lastFetchTime;
+    private volatile List<IndexedResource> cachedResources =
+            List.of();
+
+    private volatile long lastFetchTime;
 
     public MicrosoftLearnProvider() {
+
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
                 .build();
@@ -57,7 +61,12 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
 
         try {
 
-            JsonNode catalog = getCatalog();
+            long searchStart = System.nanoTime();
+
+            List<IndexedResource> resources =
+                    getCatalogResources();
+
+            String normalizedQuery = normalize(query);
 
             List<String> selectedLanguages =
                     parseLanguages(languages);
@@ -68,56 +77,98 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
             Set<String> addedUrls =
                     new HashSet<>();
 
-            processResources(
-                    catalog.path("courses"),
-                    query,
-                    selectedLanguages,
-                    candidates,
-                    addedUrls
+            for (IndexedResource item : resources) {
+
+                if (!matchesLanguage(
+                        item,
+                        selectedLanguages)) {
+                    continue;
+                }
+
+                int score = calculateScore(
+                        item,
+                        normalizedQuery
+                );
+
+                if (score < 4) {
+                    continue;
+                }
+
+                if (!addedUrls.add(item.url())) {
+                    continue;
+                }
+
+                candidates.add(
+                        new Candidate(item, score)
+                );
+            }
+
+            List<LearningResource> results =
+                    candidates.stream()
+                            .sorted(
+                                    Comparator.comparingInt(
+                                            Candidate::score
+                                    ).reversed()
+                            )
+                            .limit(20)
+                            .map(candidate ->
+                                    createResource(candidate.resource())
+                            )
+                            .toList();
+
+            long duration =
+                    (System.nanoTime() - searchStart)
+                            / 1_000_000;
+
+            System.out.println(
+                    "Microsoft Learn search took "
+                            + duration + " ms"
             );
 
-            processResources(
-                    catalog.path("learningPaths"),
-                    query,
-                    selectedLanguages,
-                    candidates,
-                    addedUrls
-            );
-
-            processResources(
-                    catalog.path("modules"),
-                    query,
-                    selectedLanguages,
-                    candidates,
-                    addedUrls
-            );
-
-            return candidates.stream()
-                    .sorted(Comparator.comparingInt(
-                            Candidate::score).reversed())
-                    .limit(20)
-                    .map(Candidate::resource)
-                    .toList();
+            return results;
 
         } catch (Exception e) {
 
             throw new IllegalStateException(
                     "Unable to retrieve Microsoft Learn resources: "
-                            + e.getMessage(), e
+                            + e.getMessage(),
+                    e
             );
         }
     }
 
-    private synchronized JsonNode getCatalog()
+    private List<IndexedResource> getCatalogResources()
             throws Exception {
 
         long currentTime = System.currentTimeMillis();
 
-        if (cachedCatalog != null
-                && currentTime - lastFetchTime < CACHE_DURATION_MS) {
+        if (!cachedResources.isEmpty()
+                && currentTime - lastFetchTime
+                < CACHE_DURATION_MS) {
 
-            return cachedCatalog;
+            return cachedResources;
         }
+
+        return refreshCatalog();
+    }
+
+    private synchronized List<IndexedResource> refreshCatalog()
+            throws Exception {
+
+        long currentTime = System.currentTimeMillis();
+
+        if (!cachedResources.isEmpty()
+                && currentTime - lastFetchTime
+                < CACHE_DURATION_MS) {
+
+            return cachedResources;
+        }
+
+        long fetchStart = System.nanoTime();
+
+        System.out.println(
+                "Downloading Microsoft Learn catalogue..."
+        );
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(CATALOG_URL))
@@ -127,30 +178,71 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
                 .GET()
                 .build();
 
-        HttpResponse<String> response = httpClient.send(
-                request,
-                HttpResponse.BodyHandlers.ofString()
-        );
+        HttpResponse<String> response =
+                httpClient.send(
+                        request,
+                        HttpResponse.BodyHandlers.ofString()
+                );
 
         if (response.statusCode() != 200) {
+
             throw new IllegalStateException(
                     "Microsoft catalogue returned HTTP "
                             + response.statusCode()
             );
         }
 
-        cachedCatalog = objectMapper.readTree(response.body());
-        lastFetchTime = currentTime;
+        JsonNode catalog =
+                objectMapper.readTree(response.body());
 
-        return cachedCatalog;
+        List<IndexedResource> indexedResources =
+                new ArrayList<>();
+
+        processCatalogSection(
+                catalog.path("courses"),
+                "course",
+                indexedResources
+        );
+
+        processCatalogSection(
+                catalog.path("learningPaths"),
+                "learningPath",
+                indexedResources
+        );
+
+        processCatalogSection(
+                catalog.path("modules"),
+                "module",
+                indexedResources
+        );
+
+        cachedResources =
+                List.copyOf(indexedResources);
+
+        lastFetchTime = System.currentTimeMillis();
+
+        long fetchDuration =
+                (System.nanoTime() - fetchStart)
+                        / 1_000_000;
+
+        System.out.println(
+                "Microsoft Learn catalogue loaded: "
+                        + cachedResources.size()
+                        + " resources"
+        );
+
+        System.out.println(
+                "Microsoft Learn catalogue processing took "
+                        + fetchDuration + " ms"
+        );
+
+        return cachedResources;
     }
 
-    private void processResources(
+    private void processCatalogSection(
             JsonNode resources,
-            String query,
-            List<String> selectedLanguages,
-            List<Candidate> candidates,
-            Set<String> addedUrls) {
+            String type,
+            List<IndexedResource> indexedResources) {
 
         if (!resources.isArray()) {
             return;
@@ -158,32 +250,36 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
 
         for (JsonNode item : resources) {
 
-            String title = item.path("title").asText("");
-            String summary = cleanHtml(
-                    item.path("summary").asText("")
-            );
+            String title =
+                    item.path("title").asText("");
 
-            String url = item.path("url").asText("");
+            String summary =
+                    item.path("summary").asText("");
+
+            String url =
+                    item.path("url").asText("");
 
             if (title.isBlank() || url.isBlank()) {
                 continue;
             }
 
-            if (!matchesLanguage(item, selectedLanguages)) {
-                continue;
-            }
+            String normalizedTitle =
+                    normalize(title);
 
-            int score = calculateScore(item, query);
+            String normalizedSummary =
+                    normalize(summary);
 
-            if (score < 4) {
-                continue;
-            }
+            List<String> subjects =
+                    normalizeArray(item.path("subjects"));
 
-            if (!addedUrls.add(url)) {
-                continue;
-            }
+            List<String> products =
+                    normalizeArray(item.path("products"));
 
-            String type = item.path("type").asText("resource");
+            List<String> roles =
+                    normalizeArray(item.path("roles"));
+
+            List<String> locales =
+                    readLocales(item);
 
             String duration = getDuration(item);
 
@@ -191,51 +287,50 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
 
             String language = getLanguage(item);
 
-            String provider = "Microsoft Learn"
-                    + " · " + formatType(type)
-                    + " · " + level
-                    + " · " + duration
-                    + " · " + language;
+            String thumbnail =
+                    item.path("icon_url").asText("");
 
-            String thumbnail = item.path("icon_url").asText("");
-
-            LearningResource resource = new LearningResource(
-                    title,
-                    summary,
-                    url,
-                    thumbnail,
-                    "microsoft",
-                    "unknown",
-                    provider
+            indexedResources.add(
+                    new IndexedResource(
+                            title,
+                            summary,
+                            normalizedTitle,
+                            normalizedSummary,
+                            url,
+                            thumbnail,
+                            type,
+                            duration,
+                            level,
+                            language,
+                            locales,
+                            subjects,
+                            products,
+                            roles
+                    )
             );
-
-            candidates.add(new Candidate(resource, score));
         }
     }
 
-    private int calculateScore(JsonNode item, String query) {
-
-        String normalizedQuery = normalize(query);
-
-        String title = normalize(
-                item.path("title").asText("")
-        );
-
-        String summary = normalize(
-                item.path("summary").asText("")
-        );
+    private int calculateScore(
+            IndexedResource item,
+            String normalizedQuery) {
 
         int score = 0;
 
-        if (title.contains(normalizedQuery)) {
+        if (item.normalizedTitle()
+                .contains(normalizedQuery)) {
+
             score += 20;
         }
 
-        if (summary.contains(normalizedQuery)) {
+        if (item.normalizedSummary()
+                .contains(normalizedQuery)) {
+
             score += 8;
         }
 
-        String[] keywords = normalizedQuery.split("\\s+");
+        String[] keywords =
+                normalizedQuery.split("\\s+");
 
         int matchedKeywords = 0;
 
@@ -247,27 +342,27 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
 
             boolean matched = false;
 
-            if (title.contains(keyword)) {
+            if (item.normalizedTitle().contains(keyword)) {
                 score += 6;
                 matched = true;
             }
 
-            if (summary.contains(keyword)) {
+            if (item.normalizedSummary().contains(keyword)) {
                 score += 2;
                 matched = true;
             }
 
-            if (containsValue(item.path("subjects"), keyword)) {
+            if (containsKeyword(item.subjects(), keyword)) {
                 score += 5;
                 matched = true;
             }
 
-            if (containsValue(item.path("products"), keyword)) {
+            if (containsKeyword(item.products(), keyword)) {
                 score += 4;
                 matched = true;
             }
 
-            if (containsValue(item.path("roles"), keyword)) {
+            if (containsKeyword(item.roles(), keyword)) {
                 score += 2;
                 matched = true;
             }
@@ -277,24 +372,22 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
             }
         }
 
-        if (keywords.length > 1 && matchedKeywords == 0) {
+        if (keywords.length > 1
+                && matchedKeywords == 0) {
+
             return 0;
         }
 
         return score;
     }
 
-    private boolean containsValue(
-            JsonNode node,
+    private boolean containsKeyword(
+            List<String> values,
             String keyword) {
 
-        if (!node.isArray()) {
-            return false;
-        }
+        for (String value : values) {
 
-        for (JsonNode value : node) {
-
-            if (normalize(value.asText()).contains(keyword)) {
+            if (value.contains(keyword)) {
                 return true;
             }
         }
@@ -303,43 +396,22 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
     }
 
     private boolean matchesLanguage(
-            JsonNode item,
+            IndexedResource item,
             List<String> selectedLanguages) {
 
         if (selectedLanguages.isEmpty()) {
             return true;
         }
 
-        JsonNode locales = item.path("locales");
-
-        if (!locales.isArray()) {
-            locales = item.path("locale").isMissingNode()
-                    ? null
-                    : item.path("locale");
-        }
-
-        if (locales == null) {
+        if (item.locales().isEmpty()) {
             return false;
         }
 
-        if (locales.isArray()) {
+        for (String locale : item.locales()) {
 
-            for (JsonNode locale : locales) {
-
-                String available =
-                        normalizeLanguage(locale.asText());
-
-                if (selectedLanguages.contains(available)) {
-                    return true;
-                }
+            if (selectedLanguages.contains(locale)) {
+                return true;
             }
-
-        } else {
-
-            String available =
-                    normalizeLanguage(locales.asText());
-
-            return selectedLanguages.contains(available);
         }
 
         return false;
@@ -351,10 +423,63 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
             return List.of();
         }
 
-        return List.of(languages.split(","))
-                .stream()
+        return java.util.Arrays.stream(
+                        languages.split(",")
+                )
                 .map(this::normalizeLanguage)
+                .distinct()
                 .toList();
+    }
+
+    private List<String> normalizeArray(JsonNode node) {
+
+        List<String> values = new ArrayList<>();
+
+        if (!node.isArray()) {
+            return values;
+        }
+
+        for (JsonNode value : node) {
+
+            String text = normalize(value.asText());
+
+            if (!text.isBlank()) {
+                values.add(text);
+            }
+        }
+
+        return List.copyOf(values);
+    }
+
+    private List<String> readLocales(JsonNode item) {
+
+        JsonNode locales = item.path("locales");
+
+        if (locales.isArray()) {
+
+            List<String> values = new ArrayList<>();
+
+            for (JsonNode locale : locales) {
+
+                String normalized =
+                        normalizeLanguage(locale.asText());
+
+                if (!normalized.isBlank()) {
+                    values.add(normalized);
+                }
+            }
+
+            return List.copyOf(values);
+        }
+
+        String locale =
+                item.path("locale").asText("");
+
+        if (locale.isBlank()) {
+            return List.of();
+        }
+
+        return List.of(normalizeLanguage(locale));
     }
 
     private String normalizeLanguage(String language) {
@@ -381,7 +506,8 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
 
         if (item.has("duration_in_hours")) {
 
-            double hours = item.path("duration_in_hours").asDouble();
+            double hours =
+                    item.path("duration_in_hours").asDouble();
 
             return hours + " hours";
         }
@@ -393,12 +519,10 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
 
             if (minutes >= 60) {
 
-                double hours = minutes / 60.0;
-
                 return String.format(
                         Locale.ROOT,
                         "%.1f hours",
-                        hours
+                        minutes / 60.0
                 );
             }
 
@@ -425,10 +549,32 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
         JsonNode locales = item.path("locales");
 
         if (locales.isArray() && !locales.isEmpty()) {
+
             return locales.get(0).asText();
         }
 
-        return item.path("locale").asText("Unknown language");
+        return item.path("locale")
+                .asText("Unknown language");
+    }
+
+    private LearningResource createResource(
+            IndexedResource item) {
+
+        String provider = "Microsoft Learn"
+                + " · " + formatType(item.type())
+                + " · " + item.level()
+                + " · " + item.duration()
+                + " · " + item.language();
+
+        return new LearningResource(
+                item.title(),
+                cleanHtml(item.summary()),
+                item.url(),
+                item.thumbnail(),
+                "microsoft",
+                "unknown",
+                provider
+        );
     }
 
     private String formatType(String type) {
@@ -469,8 +615,27 @@ public class MicrosoftLearnProvider implements LearningResourceProvider {
                 .trim();
     }
 
+    private record IndexedResource(
+            String title,
+            String summary,
+            String normalizedTitle,
+            String normalizedSummary,
+            String url,
+            String thumbnail,
+            String type,
+            String duration,
+            String level,
+            String language,
+            List<String> locales,
+            List<String> subjects,
+            List<String> products,
+            List<String> roles
+    ) {
+    }
+
     private record Candidate(
-            LearningResource resource,
-            int score) {
+            IndexedResource resource,
+            int score
+    ) {
     }
 }
