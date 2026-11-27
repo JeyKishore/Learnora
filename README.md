@@ -136,6 +136,14 @@ http://localhost:8080
 
 Learnora is under active development. Additional learning providers, performance improvements, and deployment capabilities are planned.
 
+
+## 🌐 Live Demo
+
+🚀 **Explore Learnora:** https://learnora-it13.onrender.com/
+
+Learnora is live and publicly accessible. Discover learning resources from multiple educational platforms using a single search interface.
+
+
 ## 👨‍💻 Author
 
 **Jey Kishore K**
